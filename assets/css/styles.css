@@ -144,8 +144,10 @@ canvas {
     position: relative;
 
     width: min(820px, 96vw);
-    max-height: calc(100vh - 20px);
-    overflow: hidden;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-x: hidden;
+    overflow-y: auto;
 
     color: #e9eeee;
 
@@ -524,6 +526,10 @@ canvas {
 }
 
 .control-protocol {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
     margin: 0 32px clamp(9px, 1.4vh, 14px);
     padding: clamp(8px, 1.2vh, 10px) 14px;
 
@@ -536,7 +542,7 @@ canvas {
 }
 
 .protocol-title {
-    margin-bottom: 7px;
+    margin-bottom: 0;
 
     color: #d89a43;
 
@@ -575,11 +581,12 @@ canvas {
 .terminal-action {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
 
-    gap: 20px;
+    gap: 14px;
 
-    padding: 0 32px clamp(12px, 1.8vh, 18px);
+    margin-top: 10px;
+    padding: 0;
 }
 
 .terminal-ready {
@@ -689,6 +696,7 @@ canvas {
     .terminal-action {
         flex-direction: column;
         align-items: stretch;
+        margin-top: 7px;
     }
     .pulse-power-config {
         flex-direction: column;
@@ -1884,22 +1892,24 @@ canvas {
     }
 
     .start-terminal {
-        max-height: calc(100vh - 16px);
+        max-height: calc(100vh - 12px);
+        max-height: calc(100dvh - 12px);
     }
 
     .terminal-header {
-        padding-top: 8px;
-        padding-bottom: 5px;
+        padding-top: 6px;
+        padding-bottom: 4px;
     }
 
     .terminal-header h1 {
-        margin-top: 5px;
-        font-size: clamp(32px, 4.2vw, 48px);
+        margin-top: 4px;
+        margin-bottom: 0;
+        font-size: clamp(30px, 4vw, 46px);
         letter-spacing: 6px;
     }
 
     .terminal-subtitle {
-        margin-top: 5px;
+        margin-top: 4px;
     }
 
     .system-status,
@@ -1911,11 +1921,11 @@ canvas {
     }
 
     .mission-directive {
-        gap: 12px;
-        margin-top: 8px;
-        margin-bottom: 8px;
-        padding-top: 8px;
-        padding-bottom: 8px;
+        gap: 10px;
+        margin-top: 6px;
+        margin-bottom: 6px;
+        padding-top: 6px;
+        padding-bottom: 6px;
     }
 
     .directive-number {
@@ -1935,22 +1945,23 @@ canvas {
     }
 
     .start-controls {
-        margin-bottom: 7px;
+        margin-bottom: 4px;
     }
 
     .start-controls > div {
-        padding-top: 6px;
-        padding-bottom: 6px;
+        padding-top: 4px;
+        padding-bottom: 4px;
     }
 
     .control-protocol {
-        margin-bottom: 8px;
-        padding-top: 7px;
-        padding-bottom: 7px;
+        gap: 5px;
+        margin-bottom: 6px;
+        padding-top: 5px;
+        padding-bottom: 5px;
     }
 
     .protocol-title {
-        margin-bottom: 5px;
+        margin-bottom: 0;
     }
 
     .protocol-grid {
@@ -1959,12 +1970,6 @@ canvas {
 
     .protocol-grid p {
         line-height: 1.25;
-    }
-
-    .terminal-action {
-        padding-left: 24px;
-        padding-right: 24px;
-        padding-bottom: 12px;
     }
 
     .terminal-footer {
