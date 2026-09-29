@@ -13,6 +13,155 @@ const loadingManager = new THREE.LoadingManager();
 const loader = new GLTFLoader(loadingManager);
 const fbxLoader = new FBXLoader(loadingManager);
 
+const LOAD_RETRY_LIMIT = 3;
+const LOAD_RETRY_DELAY_MS = 450;
+const resourceLoadCache = new Map();
+
+function waitForRetryDelay(attempt) {
+    return new Promise((resolve) => {
+        setTimeout(
+            resolve,
+            LOAD_RETRY_DELAY_MS * attempt
+        );
+    });
+}
+
+function loadWithRetry(cacheKey, startLoad) {
+
+    if (resourceLoadCache.has(cacheKey)) {
+        return resourceLoadCache.get(cacheKey);
+    }
+
+    const loadPromise = (async () => {
+
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= LOAD_RETRY_LIMIT; attempt++) {
+
+            try {
+                return await startLoad();
+            } catch (error) {
+                lastError = error;
+
+                if (attempt < LOAD_RETRY_LIMIT) {
+                    console.warn(
+                        `Reintentando carga (${attempt + 1}/${LOAD_RETRY_LIMIT}): ${cacheKey}`,
+                        error
+                    );
+
+                    await waitForRetryDelay(attempt);
+                }
+            }
+        }
+
+        console.error(
+            `Carga fallida definitivamente: ${cacheKey}`,
+            lastError
+        );
+
+        resourceLoadCache.delete(cacheKey);
+        throw lastError;
+    })();
+
+    resourceLoadCache.set(cacheKey, loadPromise);
+    return loadPromise;
+}
+
+function loadGltfResource(path) {
+    return loadWithRetry(
+        path,
+        () => new Promise((resolve, reject) => {
+            loader.load(
+                path,
+                resolve,
+                undefined,
+                reject
+            );
+        })
+    );
+}
+
+function loadAudioResource(audio, cacheKey) {
+    return loadWithRetry(
+        cacheKey,
+        () => new Promise((resolve, reject) => {
+
+            if (audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+                resolve(audio);
+                return;
+            }
+
+            let fallbackTimeout = null;
+            let settled = false;
+
+            const cleanup = () => {
+                if (fallbackTimeout !== null) {
+                    clearTimeout(fallbackTimeout);
+                    fallbackTimeout = null;
+                }
+
+                audio.removeEventListener("loadeddata", onReady);
+                audio.removeEventListener("canplay", onReady);
+                audio.removeEventListener("canplaythrough", onReady);
+                audio.removeEventListener("error", onError);
+            };
+
+            const onReady = () => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                cleanup();
+                resolve(audio);
+            };
+
+            const onError = () => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                cleanup();
+                reject(audio.error || new Error(cacheKey));
+            };
+
+            fallbackTimeout =
+                setTimeout(
+                    onReady,
+                    2500
+                );
+
+            audio.addEventListener(
+                "loadeddata",
+                onReady,
+                { once: true }
+            );
+
+            audio.addEventListener(
+                "canplay",
+                onReady,
+                { once: true }
+            );
+
+            audio.addEventListener(
+                "canplaythrough",
+                onReady,
+                { once: true }
+            );
+
+            audio.addEventListener(
+                "error",
+                onError,
+                { once: true }
+            );
+
+            audio.preload = "auto";
+            audio.load();
+        })
+    );
+}
+
 
 const clock = new THREE.Clock();
 let playerBody = null;
@@ -469,10 +618,10 @@ const audioSystem = (() => {
 
     Object
         .values(musicTracks)
-        .forEach((track) => {
+        .forEach((track, index) => {
             track.loop = true;
             track.volume = musicVolume;
-            track.preload = "auto";
+            track.preload = index === 0 ? "auto" : "none";
         });
 
     Object
@@ -634,6 +783,19 @@ const audioSystem = (() => {
             }
         },
         playLevelMusic,
+        loadLevelAudio(level) {
+            const track =
+                musicTracks[level];
+
+            if (!track) {
+                return Promise.resolve(null);
+            }
+
+            return loadAudioResource(
+                track,
+                `audio:music:${level}`
+            );
+        },
         stopMusic,
         playSfx,
         startEvacAlarm,
@@ -3925,154 +4087,85 @@ fbxLoader.load(
     }
 );
 
-loader.load(
-    "assets/models/cores/scene.gltf",
+let level2AssetsPromise = null;
+let level3AssetsPromise = null;
 
-    (gltf) => {
+function ensureLevel2AssetsLoaded() {
 
-        unstableCoreModel = gltf.scene;
-
-        console.log(
-            "Modelo del núcleo cargado correctamente"
-        );
-    },
-
-    undefined,
-
-    (error) => {
-
-        console.error(
-            "Error al cargar el modelo del núcleo:",
-            error
-        );
+    if (!level2AssetsPromise) {
+        level2AssetsPromise = Promise.all([
+            loadGltfResource("assets/models/cores/scene.gltf")
+                .then((gltf) => {
+                    unstableCoreModel = gltf.scene;
+                    console.log(
+                        "Modelo del núcleo cargado correctamente"
+                    );
+                }),
+            loadGltfResource("assets/models/lab/scene.gltf")
+                .then((gltf) => {
+                    labModel = gltf.scene;
+                    console.log(
+                        "Modelo de laboratorio cargado correctamente"
+                    );
+                }),
+            audioSystem.loadLevelAudio(2)
+        ]);
     }
-);
 
-loader.load(
-    "assets/models/lab/scene.gltf",
+    return level2AssetsPromise.catch((error) => {
+        level2AssetsPromise = null;
+        throw error;
+    });
+}
 
-    (gltf) => {
+function ensureLevel3AssetsLoaded() {
 
-        labModel = gltf.scene;
-
-        console.log(
-            "Modelo de laboratorio cargado correctamente"
-        );
-    },
-
-    undefined,
-
-    (error) => {
-
-        console.error(
-            "Error al cargar el modelo de laboratorio:",
-            error
-        );
+    if (!level3AssetsPromise) {
+        level3AssetsPromise = Promise.all([
+            loadGltfResource("assets/models/reactor/scene.gltf")
+                .then((gltf) => {
+                    reactorModel = gltf.scene;
+                    console.log(
+                        "Modelo del reactor cargado correctamente"
+                    );
+                }),
+            loadGltfResource("assets/models/soporte/scene.gltf")
+                .then((gltf) => {
+                    reactorSupportModel = gltf.scene;
+                    console.log(
+                        "Modelo del soporte del reactor cargado correctamente"
+                    );
+                }),
+            loadGltfResource("assets/models/control-panel/scene.gltf")
+                .then((gltf) => {
+                    controlPanelModel = gltf.scene;
+                    console.log(
+                        "Modelo del panel de control cargado correctamente"
+                    );
+                }),
+            loadGltfResource("assets/models/spind/scene.gltf")
+                .then((gltf) => {
+                    spindModel = gltf.scene;
+                    console.log(
+                        "Modelo Spind cargado correctamente"
+                    );
+                }),
+            loadGltfResource("assets/models/environment/level3/scene.gltf")
+                .then((gltf) => {
+                    level3ExitModelOriginal = gltf.scene;
+                    console.log(
+                        "Modelo EXIT del Nivel 3 cargado correctamente"
+                    );
+                }),
+            audioSystem.loadLevelAudio(3)
+        ]);
     }
-);
-loader.load(
-    "assets/models/reactor/scene.gltf",
-    (gltf) => {
 
-        reactorModel = gltf.scene;
-
-        console.log(
-            "Modelo del reactor cargado correctamente"
-        );
-    },
-    undefined,
-    (error) => {
-
-        console.error(
-            "Error al cargar el modelo del reactor:",
-            error
-        );
-    }
-);
-loader.load(
-    "assets/models/soporte/scene.gltf",
-    (gltf) => {
-
-        reactorSupportModel = gltf.scene;
-
-        console.log(
-            "Modelo del soporte del reactor cargado correctamente"
-        );
-
-    },
-    undefined,
-    (error) => {
-
-        console.error(
-            "Error al cargar el modelo del soporte del reactor:",
-            error
-        );
-
-    }
-);
-loader.load(
-    "assets/models/control-panel/scene.gltf",
-    (gltf) => {
-
-        controlPanelModel = gltf.scene;
-
-        console.log(
-            "Modelo del panel de control cargado correctamente"
-        );
-
-    },
-    undefined,
-    (error) => {
-
-        console.error(
-            "Error al cargar el panel de control:",
-            error
-        );
-
-    }
-);
-loader.load(
-    "assets/models/spind/scene.gltf",
-    (gltf) => {
-
-        spindModel = gltf.scene;
-
-        console.log(
-            "Modelo Spind cargado correctamente"
-        );
-
-    },
-    undefined,
-    (error) => {
-
-        console.error(
-            "Error al cargar el modelo Spind:",
-            error
-        );
-
-    }
-);
-loader.load(
-    "assets/models/environment/level3/scene.gltf",
-    (gltf) => {
-
-        level3ExitModelOriginal = gltf.scene;
-
-        console.log(
-            "Modelo EXIT del Nivel 3 cargado correctamente"
-        );
-
-    },
-    undefined,
-    (error) => {
-
-        console.error(
-            "Error al cargar el modelo EXIT del Nivel 3:",
-            error
-        );
-
-    }
-);
+    return level3AssetsPromise.catch((error) => {
+        level3AssetsPromise = null;
+        throw error;
+    });
+}
 
 /* ===============================
    CONTROLES DE CÁMARA
@@ -4417,20 +4510,45 @@ const nextLevelButton =
 
 nextLevelButton.addEventListener(
     "click",
-    () => {
+    async () => {
 
         playButtonSound();
 
-        if (currentLevel === 1) {
-            loadLevel2();
-        } else if (currentLevel === 2) {
-            loadLevel3();
-        } else if (currentLevel === 3 && levelCompleted) {
-            window.location.reload();
+        try {
+            if (currentLevel === 1) {
+                await loadLevel2();
+            } else if (currentLevel === 2) {
+                await loadLevel3();
+            } else if (currentLevel === 3 && levelCompleted) {
+                window.location.reload();
+            }
+        } catch (error) {
+            console.error(
+                "No se pudo preparar el siguiente nivel:",
+                error
+            );
+            nextLevelButton.disabled = false;
+            if (currentLevel === 1) {
+                nextLevelButton.innerHTML =
+                    "<span>&#9654;</span> ACCEDER AL LABORATORIO";
+            } else if (currentLevel === 2) {
+                nextLevelButton.innerHTML =
+                    "<span>&#9654;</span> ACCEDER A REACTOR ZERO";
+            }
         }
 
     }
 );
+
+function setNextLevelLoading(isLoading, label) {
+
+    nextLevelButton.disabled = isLoading;
+
+    if (isLoading) {
+        nextLevelButton.innerHTML =
+            `<span>&#8987;</span> ${label}`;
+    }
+}
 
 function formatTimer(secondsRemaining) {
 
@@ -6173,11 +6291,18 @@ function showLevel2Complete() {
         .remove("hidden");
 }
 
-function loadLevel2() {
+async function loadLevel2() {
 
     console.log(
         "Iniciando Nivel 2 - Laboratorio"
     );
+
+    setNextLevelLoading(
+        true,
+        "CARGANDO LABORATORIO..."
+    );
+
+    await ensureLevel2AssetsLoaded();
 
     currentLevel = 2;
 
@@ -6219,6 +6344,8 @@ function loadLevel2() {
         updateLevel2ObjectiveMarker(true);
         startLevelTimer();
     });
+
+    nextLevelButton.disabled = false;
 }
 
 function createReactorSupport(position, index) {
@@ -7134,11 +7261,18 @@ function clearLevel3Objects() {
     }
 }
 
-function loadLevel3() {
+async function loadLevel3() {
 
     console.log(
         "Iniciando Nivel 3 - Reactor Zero"
     );
+
+    setNextLevelLoading(
+        true,
+        "CARGANDO REACTOR..."
+    );
+
+    await ensureLevel3AssetsLoaded();
 
     currentLevel = 3;
     setLevel3Lighting();
@@ -7184,6 +7318,8 @@ function loadLevel3() {
             "REACTOR ZERO // 3 SOPORTES CRÍTICOS DETECTADOS"
         );
     });
+
+    nextLevelButton.disabled = false;
 }
 function createLevel3Reactor() {
 
