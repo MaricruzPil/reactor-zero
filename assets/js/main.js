@@ -224,6 +224,12 @@ let lastAnomalyDamageTime = 0;
 let gameOver = false;
 const LEVEL_TIME_LIMIT = 70;
 const ENERGY_COST_PER_CORE_PULSE = 10;
+const PULSE_POWER_MULTIPLIERS = {
+    normal: 1,
+    powerful: 1.6
+};
+let pulsePhysicsPowerMultiplier =
+    PULSE_POWER_MULTIPLIERS.normal;
 let timerAccumulator = 0;
 let levelTimeRemaining = LEVEL_TIME_LIMIT;
 let levelTimerRunning = false;
@@ -4347,6 +4353,19 @@ const resumeButton =
     document.getElementById("resume-button");
 const restartButton =
     document.getElementById("restart-button");
+const pulsePowerSelect =
+    document.getElementById("pulse-power-select");
+
+if (pulsePowerSelect) {
+    pulsePowerSelect.addEventListener(
+        "change",
+        () => {
+            pulsePhysicsPowerMultiplier =
+                PULSE_POWER_MULTIPLIERS[pulsePowerSelect.value] ||
+                PULSE_POWER_MULTIPLIERS.normal;
+        }
+    );
+}
 
 function playButtonSound() {
     audioSystem.playButtonClick();
@@ -8367,17 +8386,17 @@ function applyPulseImpact(hit, pulse) {
 
         crate.body.applyImpulse(
             {
-                x: pulse.direction.x * 18,
-                y: 6,
-                z: pulse.direction.z * 18
+                x: pulse.direction.x * 18 * pulsePhysicsPowerMultiplier,
+                y: 6 * pulsePhysicsPowerMultiplier,
+                z: pulse.direction.z * 18 * pulsePhysicsPowerMultiplier
             },
             true
         );
         crate.body.applyTorqueImpulse(
             {
-                x: pulse.direction.z * 8,
+                x: pulse.direction.z * 8 * pulsePhysicsPowerMultiplier,
                 y: 0,
-                z: -pulse.direction.x * 8
+                z: -pulse.direction.x * 8 * pulsePhysicsPowerMultiplier
             },
             true
         );
@@ -8503,17 +8522,17 @@ function applyPulseImpact(hit, pulse) {
 
         barrel.body.applyImpulse(
             {
-                x: pulse.direction.x * 18,
-                y: 6,
-                z: pulse.direction.z * 18
+                x: pulse.direction.x * 18 * pulsePhysicsPowerMultiplier,
+                y: 6 * pulsePhysicsPowerMultiplier,
+                z: pulse.direction.z * 18 * pulsePhysicsPowerMultiplier
             },
             true
         );
         barrel.body.applyTorqueImpulse(
             {
-                x: pulse.direction.z * 8,
+                x: pulse.direction.z * 8 * pulsePhysicsPowerMultiplier,
                 y: 0,
-                z: -pulse.direction.x * 8
+                z: -pulse.direction.x * 8 * pulsePhysicsPowerMultiplier
             },
             true
         );
