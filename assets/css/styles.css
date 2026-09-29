@@ -481,10 +481,10 @@ canvas {
     align-items: center;
     justify-content: space-between;
 
-    gap: 10px;
+    gap: 8px;
 
-    margin: 0 32px clamp(5px, 0.8vh, 8px);
-    padding: 5px 12px;
+    margin:  0 32px 2px;
+    padding: 2px 12px;
 
     background: rgba(216, 154, 67, 0.045);
 
@@ -507,7 +507,7 @@ canvas {
 .pulse-power-config select {
     min-width: 130px;
 
-    padding: 4px 9px;
+    padding: 2px 9px;
 
     color: #d7f7ff;
     background: #10191c;
